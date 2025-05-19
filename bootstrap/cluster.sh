@@ -1,21 +1,26 @@
 #!/bin/bash
 
-cat <<EOF | kind create cluster --name m2devweb --config=-
+cat <<EOF | kind create cluster --config=-
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 nodes:
   - role: control-plane
     extraPortMappings:
-      - containerPort: 80
-        hostPort: 8080
-      - containerPort: 443
-        hostPort: 8443
+      - containerPort: 31437
+        hostPort: 80
+        protocol: TCP
+      - containerPort: 31438
+        hostPort: 443
+        protocol: TCP
   - role: worker
   - role: worker
 EOF
 
-# Wait for the cluster to be ready
-echo "Waiting for the cluster to be ready..."
-until kubectl get nodes | grep -q "Ready"; do
-  sleep 5
-done
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: local
+  labels:
+    env: local
+EOF

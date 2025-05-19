@@ -1,23 +1,52 @@
 #!/bin/bash
 
-# Ajouter le repo Helm officiel de Kong
-helm repo add kong https://charts.konghq.com
-helm repo update
+kubectl kustomize "https://github.com/nginx/nginx-gateway-fabric/config/crd/gateway-api/standard?ref=v1.6.2" | kubectl apply -f -
 
-# Créer le namespace kong
-kubectl create namespace kong
+helm install ngf oci://ghcr.io/nginx/charts/nginx-gateway-fabric --create-namespace -n nginx-gateway --set service.create=false
 
-# Installer Kong Gateway avec Gateway API activée
-helm install kong kong/kong \
-  --namespace kong \
-  --set ingressController.enabled=false \
-  --set gateway.enabled=true \
-  --set admin.enabled=false \
-  --set env.controller_log_level=info
+kubectl apply -f - <<EOF
 
-# Wait for Kong Gateway to be ready
-echo "Waiting for Kong Gateway to be ready..."
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-gateway
+  namespace: nginx-gateway
+  labels:
+    app.kubernetes.io/name: nginx-gateway-fabric
+    app.kubernetes.io/instance: ngf
+    app.kubernetes.io/version: "1.6.2"
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: nginx-gateway-fabric
+    app.kubernetes.io/instance: ngf
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: 80
+      nodePort: 31437
+    - name: https
+      port: 443
+      protocol: TCP
+      targetPort: 443
+      nodePort: 31438
+EOF
 
-until kubectl get pods -n kong | grep -q "1/1"; do
-  sleep 5
-done
+kubectl apply -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gateway
+  namespace: local
+spec:
+  gatewayClassName: nginx
+  listeners:
+    - name: http
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: All
+      protocol: HTTP
+      hostname: "*.fbi.com"
+EOF
